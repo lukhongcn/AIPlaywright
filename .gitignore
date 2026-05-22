@@ -1,0 +1,15 @@
+# Build outputs
+bin/
+obj/
+
+# Playwright runtime assets
+.playwright/
+
+# User and IDE files
+.vs/
+*.user
+*.suo
+
+# Logs and temp files
+*.log
+*.tmp

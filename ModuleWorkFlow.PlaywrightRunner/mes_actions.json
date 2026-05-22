@@ -1,0 +1,15 @@
+[
+  {
+    "action": "login_test",
+    "readOnly": true,
+    "url": "http://localhost:5008/Login.aspx",
+    "requiredParams": [
+      "loginUrl",
+      "userName",
+      "password"
+    ],
+    "optionalParams": [],
+    "handler": "login_test",
+    "description": "Open the MES login page, fill username and password, click login, and return the login result."
+  }
+]

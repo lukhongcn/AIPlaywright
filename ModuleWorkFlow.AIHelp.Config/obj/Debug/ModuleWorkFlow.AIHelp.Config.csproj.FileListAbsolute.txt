@@ -1,0 +1,13 @@
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\ModuleWorkFlow.AIHelp.Config.dll.config
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\ModuleWorkFlow.AIHelp.Config.dll
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\ModuleWorkFlow.AIHelp.Config.pdb
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\ModuleWorkFlow.AIHelp.Llm.dll
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\Newtonsoft.Json.dll
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\ModuleWorkFlow.AIHelp.Llm.pdb
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\ModuleWorkFlow.AIHelp.Llm.dll.config
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\bin\Debug\Newtonsoft.Json.xml
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\obj\Debug\ModuleWorkFlow.AIHelp.Config.csproj.AssemblyReference.cache
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\obj\Debug\ModuleWorkFlow.AIHelp.Config.csproj.CoreCompileInputs.cache
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\obj\Debug\ModuleWo.4F1A8D7A.Up2Date
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\obj\Debug\ModuleWorkFlow.AIHelp.Config.dll
+D:\project\new_xuxiang2018_zhengqin_twPart\ModuleWorkFlow.AIHelp.Config\obj\Debug\ModuleWorkFlow.AIHelp.Config.pdb

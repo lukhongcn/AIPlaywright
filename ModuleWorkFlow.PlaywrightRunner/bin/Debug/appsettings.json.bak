@@ -1,0 +1,14 @@
+{
+  "Mes": {
+    "BaseUrl": "http://localhost:5008"
+  },
+  "Llm": {
+    "Region": "cn",
+    "BaseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "ApiKey": "sk-b99e9ddd2af14939a540557806e8aeb6",
+    "Model": "qwen3.6-plus",
+    "Temperature": 0.1,
+    "EnableThinking": false,
+    "TimeoutSeconds": 60
+  }
+}

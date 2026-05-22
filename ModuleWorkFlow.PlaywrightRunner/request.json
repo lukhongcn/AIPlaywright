@@ -1,0 +1,14 @@
+{
+  "action": "order_design_new_dryrun",
+  "params": {
+    "baseUrl": "http://localhost:5008",
+    "userName": "admin",
+    "password": "123456",
+    "customer": "A01",
+    "itemNo": "P001",
+    "quantity": "10",
+    "orderDate": "2026-05-09",
+    "deliveryDate": "2026-05-20",
+    "remark": "AI dry-run test"
+  }
+}

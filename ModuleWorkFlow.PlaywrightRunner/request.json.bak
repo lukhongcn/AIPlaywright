@@ -1,0 +1,8 @@
+{
+  "action": "login_test",
+  "params": {
+    "loginUrl": "http://localhost/HFAMDP/Login.aspx",
+    "userName": "testuser",
+    "password": "testpassword"
+  }
+}

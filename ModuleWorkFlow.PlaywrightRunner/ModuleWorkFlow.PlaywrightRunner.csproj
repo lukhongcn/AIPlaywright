@@ -92,6 +92,7 @@
     <Compile Include="Actions\PartProcess\PartProcessMoveDryRunRunner.cs" />
     <Compile Include="AiConsoleRunner.cs" />
     <Compile Include="Infrastructure\SafeClickHelper.cs" />
+    <Compile Include="Infrastructure\UnicodeConsoleHelper.cs" />
     <Compile Include="JsonConsoleWriter.cs" />
     <Compile Include="LoginResult.cs" />
     <Compile Include="LoginTestRunner.cs" />

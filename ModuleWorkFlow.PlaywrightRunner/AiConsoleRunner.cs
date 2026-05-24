@@ -5,8 +5,11 @@ using ModuleWorkFlow.AIHelp.Tools;
 using ModuleWorkFlow.AIHelp.Training;
 using ModuleWorkFlow.PlaywrightRunner.Actions.Login;
 using ModuleWorkFlow.PlaywrightRunner.Actions.Orders;
+using ModuleWorkFlow.PlaywrightRunner.Infrastructure;
 using Microsoft.Playwright;
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace ModuleWorkFlow.PlaywrightRunner
@@ -18,12 +21,13 @@ namespace ModuleWorkFlow.PlaywrightRunner
             var config = AppConfig.Load();
             var toolRegistry = ToolRegistry.Load();
             var trainingDataLogger = new TrainingDataLogger();
+            var cleanTrainingRetriever = new CleanTrainingRetriever();
             var maskUserName = false;
 
             Console.WriteLine("請告訴我你要做什麼，我會幫你操作 MES。");
             Console.WriteLine("例如：新增訂單，客戶 A01，料號 P001，數量 10");
             Console.Write("> ");
-            var userInput = Console.ReadLine();
+            var userInput = UnicodeConsoleHelper.ReadLine();
 
             if (string.IsNullOrWhiteSpace(userInput))
             {
@@ -32,7 +36,10 @@ namespace ModuleWorkFlow.PlaywrightRunner
             }
 
             var llmClient = new OpenAiCompatibleLlmClient(config.Llm);
-            var systemPrompt = AiPromptBuilder.BuildSystemPrompt(toolRegistry);
+            var systemPrompt = BuildPromptWithRetrievedExamples(
+                AiPromptBuilder.BuildSystemPrompt(toolRegistry),
+                cleanTrainingRetriever,
+                userInput);
 
             Console.WriteLine("正在調用千問解析指令...");
 
@@ -49,8 +56,33 @@ namespace ModuleWorkFlow.PlaywrightRunner
                     decision,
                     TrainingExecutionResultFactory.Create(decision.Status, false, decision.Question, null, decision),
                     maskUserName);
-                Console.WriteLine(decision.Question);
-                return;
+
+                if (decision != null &&
+                    string.Equals(decision.Status, "rejected", StringComparison.OrdinalIgnoreCase))
+                {
+                    var correctedDecision = TryResolveRejectedDecisionFromSelection(toolRegistry, userInput);
+                    if (correctedDecision != null)
+                    {
+                        decision = correctedDecision;
+                        aiRawText = SerializeDecisionForPromptReuse(correctedDecision);
+                        trainingDataLogger.AppendCorrectedCleanSample(
+                            systemPrompt,
+                            userInput,
+                            correctedDecision,
+                            TrainingExecutionResultFactory.Create(correctedDecision.Status, false, "使用者手動選擇 action 進行糾正。", null, correctedDecision),
+                            maskUserName);
+                    }
+                    else
+                    {
+                        Console.WriteLine(decision.Question);
+                        return;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine(decision.Question);
+                    return;
+                }
             }
 
             if (!IsReady(decision))
@@ -95,11 +127,11 @@ namespace ModuleWorkFlow.PlaywrightRunner
 
                 if (decision.MissingParams != null && decision.MissingParams.Count > 0)
                 {
-                    Console.WriteLine("目前還缺這些資料：" + string.Join(", ", decision.MissingParams));
-                }
+                Console.WriteLine("目前還缺這些資料：" + string.Join(", ", decision.MissingParams));
+            }
 
-                Console.Write("請直接補充說明 > ");
-                var moreInput = Console.ReadLine();
+            Console.Write("請直接補充說明 > ");
+            var moreInput = UnicodeConsoleHelper.ReadLine();
 
                 if (string.IsNullOrWhiteSpace(moreInput))
                 {
@@ -116,6 +148,10 @@ namespace ModuleWorkFlow.PlaywrightRunner
                 }
 
                 userInput = userInput + "\n補充資訊：" + moreInput;
+                systemPrompt = BuildPromptWithRetrievedExamples(
+                    AiPromptBuilder.BuildSystemPrompt(toolRegistry),
+                    cleanTrainingRetriever,
+                    userInput);
 
                 Console.WriteLine("正在重新調用千問解析補充資訊...");
                 aiRawText = await llmClient.ChatAsync(systemPrompt, userInput);
@@ -131,6 +167,25 @@ namespace ModuleWorkFlow.PlaywrightRunner
                         decision,
                         TrainingExecutionResultFactory.Create(decision.Status, false, decision.Question, null, decision),
                         maskUserName);
+
+                    if (decision != null &&
+                        string.Equals(decision.Status, "rejected", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var correctedDecision = TryResolveRejectedDecisionFromSelection(toolRegistry, userInput);
+                        if (correctedDecision != null)
+                        {
+                            decision = correctedDecision;
+                            aiRawText = SerializeDecisionForPromptReuse(correctedDecision);
+                            trainingDataLogger.AppendCorrectedCleanSample(
+                                systemPrompt,
+                                userInput,
+                                correctedDecision,
+                                TrainingExecutionResultFactory.Create(correctedDecision.Status, false, "使用者手動選擇 action 進行糾正。", null, correctedDecision),
+                                maskUserName);
+                            continue;
+                        }
+                    }
+
                     Console.WriteLine(decision.Question);
                     return;
                 }
@@ -245,7 +300,7 @@ namespace ModuleWorkFlow.PlaywrightRunner
                 {
                     Console.WriteLine("需要先登入 MES。請輸入登入資訊，格式：帳號 密碼，例如：admin 123456");
                     Console.Write("> ");
-                    var loginInput = Console.ReadLine();
+                    var loginInput = UnicodeConsoleHelper.ReadLine();
                     FillMesCredentialsFromSingleLine(loginInput, ref userName, ref password);
                 }
 
@@ -410,13 +465,13 @@ namespace ModuleWorkFlow.PlaywrightRunner
             if (string.IsNullOrWhiteSpace(userName))
             {
                 Console.Write("請輸入 MES 帳號 > ");
-                userName = Console.ReadLine();
+                userName = UnicodeConsoleHelper.ReadLine();
             }
 
             if (string.IsNullOrWhiteSpace(password))
             {
                 Console.Write("請輸入 MES 密碼 > ");
-                password = Console.ReadLine();
+                password = UnicodeConsoleHelper.ReadLine();
             }
         }
 
@@ -505,6 +560,155 @@ namespace ModuleWorkFlow.PlaywrightRunner
                 maskUserName);
 
             Console.WriteLine(message);
+        }
+
+        private static string BuildPromptWithRetrievedExamples(
+            string baseSystemPrompt,
+            CleanTrainingRetriever cleanTrainingRetriever,
+            string userInput)
+        {
+            if (cleanTrainingRetriever == null || string.IsNullOrWhiteSpace(userInput))
+            {
+                return baseSystemPrompt ?? string.Empty;
+            }
+
+            var matches = cleanTrainingRetriever.FindMatches(userInput, 3);
+            if (matches == null || matches.Count == 0)
+            {
+                return baseSystemPrompt ?? string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            builder.Append(baseSystemPrompt ?? string.Empty);
+            builder.AppendLine();
+            builder.AppendLine("以下是與目前輸入相近的歷史樣本，僅供你參考判斷，不可盲目照抄：");
+
+            var index = 1;
+            foreach (var match in matches)
+            {
+                builder.AppendLine("樣本 " + index + "：");
+                builder.AppendLine("User: " + (match.UserInput ?? string.Empty));
+                builder.AppendLine("Assistant: " + (match.AssistantOutput ?? string.Empty));
+
+                if (!string.IsNullOrWhiteSpace(match.Action) ||
+                    !string.IsNullOrWhiteSpace(match.Status) ||
+                    !string.IsNullOrWhiteSpace(match.SampleType))
+                {
+                    var metadataParts = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(match.Action))
+                    {
+                        metadataParts.Add("action=" + match.Action);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(match.Status))
+                    {
+                        metadataParts.Add("status=" + match.Status);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(match.SampleType))
+                    {
+                        metadataParts.Add("sampleType=" + match.SampleType);
+                    }
+
+                    builder.AppendLine("Metadata: " + string.Join(", ", metadataParts));
+                }
+
+                builder.AppendLine();
+                index++;
+            }
+
+            return builder.ToString();
+        }
+
+        private static AiDecision TryResolveRejectedDecisionFromSelection(
+            ToolRegistry toolRegistry,
+            string userInput)
+        {
+            var actions = toolRegistry == null ? null : toolRegistry.GetAllActions();
+            if (actions == null || actions.Count == 0)
+            {
+                return null;
+            }
+
+            Console.WriteLine("目前沒有自動識別成功。請從以下 action 中選一個，或直接按 Enter 取消：");
+            for (var i = 0; i < actions.Count; i++)
+            {
+                var action = actions[i];
+                Console.WriteLine(string.Format("{0}. {1} - {2}", i + 1, action.Action, action.Description));
+            }
+
+            Console.Write("請輸入編號 > ");
+            var selection = UnicodeConsoleHelper.ReadLine();
+            if (string.IsNullOrWhiteSpace(selection))
+            {
+                return null;
+            }
+
+            int index;
+            if (!int.TryParse(selection.Trim(), out index))
+            {
+                Console.WriteLine("輸入不是有效編號，這次先取消。");
+                return null;
+            }
+
+            if (index < 1 || index > actions.Count)
+            {
+                Console.WriteLine("超出可選範圍，這次先取消。");
+                return null;
+            }
+
+            var selectedAction = actions[index - 1];
+            var correctedDecision = CreateManualDecisionFromAction(selectedAction);
+
+            Console.WriteLine("已將「" + userInput + "」修正為 action：" + correctedDecision.Action);
+            return correctedDecision;
+        }
+
+        private static AiDecision CreateManualDecisionFromAction(ActionToolDefinition actionDefinition)
+        {
+            var decision = new AiDecision
+            {
+                Status = "ready",
+                Action = actionDefinition == null ? string.Empty : actionDefinition.Action,
+                Question = string.Empty,
+                Confidence = 1,
+                Params = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                MissingParams = new List<string>()
+            };
+
+            if (actionDefinition != null && actionDefinition.RequiredParams != null)
+            {
+                foreach (var requiredParam in actionDefinition.RequiredParams)
+                {
+                    decision.MissingParams.Add(requiredParam);
+                }
+            }
+
+            if (decision.MissingParams.Count > 0)
+            {
+                decision.Status = "need_more_info";
+                decision.Question = "请补充以下参数: " + string.Join(", ", decision.MissingParams);
+            }
+
+            return decision;
+        }
+
+        private static string SerializeDecisionForPromptReuse(AiDecision decision)
+        {
+            if (decision == null)
+            {
+                return string.Empty;
+            }
+
+            return Newtonsoft.Json.JsonConvert.SerializeObject(new
+            {
+                status = decision.Status,
+                action = decision.Action,
+                @params = decision.Params,
+                missingParams = decision.MissingParams,
+                question = decision.Question,
+                confidence = decision.Confidence
+            });
         }
 
         private static bool IsReady(AiDecision decision)

@@ -24,10 +24,15 @@ namespace ModuleWorkFlow.PlaywrightRunner
             var userPrompt = "請用一句話回答：你是什麼模型？";
 
             Console.WriteLine("正在調用 LLM API...");
-            var result = await client.ChatAsync(systemPrompt, userPrompt);
+            var result = await client.ChatWithUsageAsync(systemPrompt, userPrompt);
 
             Console.WriteLine("LLM 返回：");
-            Console.WriteLine(result);
+            Console.WriteLine(result.Content);
+            Console.WriteLine();
+            Console.WriteLine("Token 用量：");
+            Console.WriteLine("InputTokens: " + result.InputTokens);
+            Console.WriteLine("OutputTokens: " + result.OutputTokens);
+            Console.WriteLine("TotalTokens: " + result.TotalTokens);
         }
     }
 }

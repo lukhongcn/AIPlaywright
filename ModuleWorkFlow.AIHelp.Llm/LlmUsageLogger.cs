@@ -6,7 +6,8 @@ namespace ModuleWorkFlow.AIHelp.Llm
 {
     internal sealed class LlmUsageLogger
     {
-        private static readonly UTF8Encoding Utf8WithoutBom = new UTF8Encoding(false);
+        // Keep BOM so Windows tools read CSV logs as UTF-8 consistently.
+        private static readonly UTF8Encoding Utf8WithBom = new UTF8Encoding(true);
 
         private readonly string _logPath;
 
@@ -31,7 +32,7 @@ namespace ModuleWorkFlow.AIHelp.Llm
                 File.WriteAllText(
                     _logPath,
                     "timestamp,model,input_tokens,output_tokens,total_tokens" + Environment.NewLine,
-                    Utf8WithoutBom);
+                    Utf8WithBom);
             }
 
             var line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "," +
@@ -41,7 +42,7 @@ namespace ModuleWorkFlow.AIHelp.Llm
                        totalTokens +
                        Environment.NewLine;
 
-            File.AppendAllText(_logPath, line, Utf8WithoutBom);
+            File.AppendAllText(_logPath, line, Utf8WithBom);
         }
 
         private static string EscapeCsv(string value)

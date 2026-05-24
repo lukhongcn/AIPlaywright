@@ -10,7 +10,8 @@ namespace ModuleWorkFlow.AIHelp.Training
 {
     public class TrainingDataLogger
     {
-        private static readonly UTF8Encoding Utf8WithoutBom = new UTF8Encoding(false);
+        // Keep BOM so Windows tools read Chinese training logs as UTF-8 consistently.
+        private static readonly UTF8Encoding Utf8WithBom = new UTF8Encoding(true);
 
         private readonly string _trainingDirectory;
         private readonly string _rawDirectory;
@@ -48,7 +49,7 @@ namespace ModuleWorkFlow.AIHelp.Training
             Directory.CreateDirectory(_cleanDirectory);
             EnsureFileExists(_rawJsonlPath, Encoding.UTF8);
             EnsureFileExists(_reviewMarkdownPath, Encoding.UTF8);
-            EnsureFileExists(_cleanJsonlPath, Utf8WithoutBom);
+            EnsureFileExists(_cleanJsonlPath, Utf8WithBom);
 
             var safeDecision = CloneDecision(decision);
             var safeExecutionResult = CloneExecutionResult(executionResult);
@@ -81,8 +82,39 @@ namespace ModuleWorkFlow.AIHelp.Training
                 File.AppendAllText(
                     _cleanJsonlPath,
                     BuildCleanJsonl(systemPrompt, sample) + Environment.NewLine,
-                    Utf8WithoutBom);
+                    Utf8WithBom);
             }
+        }
+
+        public void AppendCorrectedCleanSample(
+            string systemPrompt,
+            string userInput,
+            AiDecision correctedDecision,
+            TrainingExecutionResult executionResult,
+            bool maskUserName = false)
+        {
+            Directory.CreateDirectory(_cleanDirectory);
+            EnsureFileExists(_cleanJsonlPath, Utf8WithBom);
+
+            var safeDecision = CloneDecision(correctedDecision);
+            var safeExecutionResult = CloneExecutionResult(executionResult);
+
+            SanitizeDecision(safeDecision, maskUserName);
+            SanitizeExecutionResult(safeExecutionResult, maskUserName);
+
+            var sample = new TrainingLogSample
+            {
+                Timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                UserInput = SanitizeText(userInput, correctedDecision, maskUserName),
+                AiRawText = SerializeDecisionForTraining(safeDecision),
+                AiDecision = safeDecision,
+                ExecutionResult = safeExecutionResult
+            };
+
+            File.AppendAllText(
+                _cleanJsonlPath,
+                BuildCleanJsonl(systemPrompt, sample) + Environment.NewLine,
+                Utf8WithBom);
         }
 
         private static void EnsureFileExists(string path, Encoding encoding)
@@ -141,10 +173,7 @@ namespace ModuleWorkFlow.AIHelp.Training
                 return true;
             }
 
-            if (string.Equals(sample.AiDecision.Status, "rejected", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            // Raw/review keep rejected samples; clean keeps only normalized positive/clarification samples.
 
             if (!string.Equals(sample.AiDecision.Status, "ready", StringComparison.OrdinalIgnoreCase))
             {

@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Playwright;
 using ModuleWorkFlow.AIHelp.Config;
+using ModuleWorkFlow.PlaywrightRunner.Actions.Login;
 using ModuleWorkFlow.PlaywrightRunner.Infrastructure;
 
 namespace ModuleWorkFlow.PlaywrightRunner.Actions.Orders
@@ -49,7 +50,31 @@ namespace ModuleWorkFlow.PlaywrightRunner.Actions.Orders
                     SlowMo = 300
                 });
                 page = await browser.NewPageAsync();
-                return await RunAsync(page, request);
+
+                var loginResult = await EnsureLoginIfNeededAsync(page, request);
+                if (!loginResult.Success)
+                {
+                    result.Executed = true;
+                    result.Success = false;
+                    result.Status = "login_required";
+                    result.Message = loginResult.Message;
+                    result.CurrentUrl = loginResult.CurrentUrl;
+                    result.PageTitle = await TryGetTitleAsync(page);
+                    result.ScreenshotPath = await TryTakeScreenshotAsync(page, "order_design_new_login_required");
+
+                    // Keep the browser open on failure so the user can inspect the MES page.
+                    await WaitForUserInspectionAsync(result.Message);
+                    return result;
+                }
+
+                result = await RunAsync(page, request);
+                if (!result.Success)
+                {
+                    // Keep the browser open on failure so the user can inspect the MES page.
+                    await WaitForUserInspectionAsync(result.Message);
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
@@ -184,7 +209,19 @@ namespace ModuleWorkFlow.PlaywrightRunner.Actions.Orders
                 }
             }
 
+            if (string.IsNullOrWhiteSpace(request.MesUserName))
+            {
+                request.MesUserName = Environment.GetEnvironmentVariable("MES_USER");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.MesPassword))
+            {
+                request.MesPassword = Environment.GetEnvironmentVariable("MES_PASSWORD");
+            }
+
             request.BaseUrl = NormalizeValue(request.BaseUrl);
+            request.MesUserName = NormalizeValue(request.MesUserName);
+            request.MesPassword = NormalizeValue(request.MesPassword);
             request.Customer = NormalizeValue(request.Customer);
             request.ItemNo = NormalizeValue(request.ItemNo);
             request.Quantity = NormalizeValue(request.Quantity);
@@ -604,6 +641,110 @@ namespace ModuleWorkFlow.PlaywrightRunner.Actions.Orders
             {
                 return string.Empty;
             }
+        }
+
+        private static async Task<LoginResult> EnsureLoginIfNeededAsync(IPage page, OrderDesignNewDryRunRequest request)
+        {
+            var listUrl = request.BaseUrl.TrimEnd('/') + ListPath;
+            await page.GotoAsync(listUrl);
+            await WaitForPageStableAsync(page);
+
+            if (!IsLoginPage(page))
+            {
+                return new LoginResult
+                {
+                    Success = true,
+                    Message = "已在 MES 內，直接進入訂單列表。",
+                    CurrentUrl = page.Url
+                };
+            }
+
+            EnsureMesCredentialsFromConsole(request);
+            if (string.IsNullOrWhiteSpace(request.MesUserName) || string.IsNullOrWhiteSpace(request.MesPassword))
+            {
+                return new LoginResult
+                {
+                    Success = false,
+                    Message = "需要先登入 MES，但沒有提供完整登入資訊。",
+                    CurrentUrl = page.Url
+                };
+            }
+
+            var loginResult = await MesLoginHelper.EnsureLoginAsync(page, request.BaseUrl, request.MesUserName, request.MesPassword);
+            if (!loginResult.Success)
+            {
+                return loginResult;
+            }
+
+            await page.GotoAsync(listUrl);
+            await WaitForPageStableAsync(page);
+
+            return new LoginResult
+            {
+                Success = true,
+                Message = "登入成功，已回到訂單列表。",
+                CurrentUrl = page.Url
+            };
+        }
+
+        private static void EnsureMesCredentialsFromConsole(OrderDesignNewDryRunRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.MesUserName) || string.IsNullOrWhiteSpace(request.MesPassword))
+            {
+                Console.WriteLine("需要先登入 MES。請輸入登入資訊，格式：帳號 密碼，例如：admin 123456");
+                Console.Write("> ");
+                FillMesCredentialsFromSingleLine(request, UnicodeConsoleHelper.ReadLine());
+            }
+
+            if (string.IsNullOrWhiteSpace(request.MesUserName))
+            {
+                Console.Write("請輸入 MES 帳號 > ");
+                request.MesUserName = NormalizeValue(UnicodeConsoleHelper.ReadLine());
+            }
+
+            if (string.IsNullOrWhiteSpace(request.MesPassword))
+            {
+                Console.Write("請輸入 MES 密碼 > ");
+                request.MesPassword = NormalizeValue(UnicodeConsoleHelper.ReadLine());
+            }
+        }
+
+        private static void FillMesCredentialsFromSingleLine(OrderDesignNewDryRunRequest request, string input)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(input))
+            {
+                return;
+            }
+
+            var parts = input.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length > 0 && string.IsNullOrWhiteSpace(request.MesUserName))
+            {
+                request.MesUserName = NormalizeValue(parts[0]);
+            }
+
+            if (parts.Length > 1 && string.IsNullOrWhiteSpace(request.MesPassword))
+            {
+                request.MesPassword = NormalizeValue(parts[1]);
+            }
+        }
+
+        private static bool IsLoginPage(IPage page)
+        {
+            return page != null &&
+                   page.Url.IndexOf("login.aspx", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static Task WaitForUserInspectionAsync(string message)
+        {
+            Console.WriteLine(message);
+            Console.WriteLine("MES 頁面已保留，請檢查目前畫面。看完後按 Enter 關閉瀏覽器。");
+            UnicodeConsoleHelper.ReadLine();
+            return Task.CompletedTask;
         }
 
         private static string[] GetCustomerSelectors()
